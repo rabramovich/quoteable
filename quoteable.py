@@ -38,7 +38,6 @@ session = DBSession()
 # Create anti-forgery state token
 @app.route('/login')
 def showLogin():
-    """Creates state token for login_session"""
     state = ''.join(random.choice(string.ascii_uppercase + string.digits)
                     for x in xrange(32))
     login_session['state'] = state
@@ -48,7 +47,6 @@ def showLogin():
 
 @app.route('/gconnect', methods=['POST'])
 def gconnect():
-    """Authenticates with OAuth2 to Google sign-in"""
     # Validate state token
     if request.args.get('state') != login_session['state']:
         response = make_response(json.dumps('Invalid state parameter.'), 401)
@@ -142,7 +140,6 @@ def gconnect():
 
 # User Helper Functions
 def createUser(login_session):
-    """Creates user object in database from login_session object"""
     newUser = User(
         name=login_session['username'],
         email=login_session['email'],
@@ -154,13 +151,11 @@ def createUser(login_session):
 
 
 def getUserInfo(user_id):
-    """ Returns User object for selected user_id"""
     user = session.query(User).filter_by(id=user_id).one()
     return user
 
 
 def getUserID(email):
-    """ Returns User object for selected email address"""
     user = session.query(User).filter_by(email=email).one()
     return user.id
 
@@ -169,7 +164,6 @@ def getUserID(email):
 # some items moved from main disconnect module since only one login provider.
 @app.route('/gdisconnect')
 def gdisconnect():
-    """Disconnect user from Google Sign-in"""
     # Only disconnect a connected user.
     access_token = login_session.get('access_token')
     if access_token is None:
@@ -195,7 +189,6 @@ def gdisconnect():
 # JSON APIs to view all Quotes for a Source
 @app.route('/source/<int:source_id>/quote/JSON')
 def sourceQuoteJSON(source_id):
-    """Show all quotes by selected author (Source)"""
     source = session.query(Source).filter_by(id=source_id).one()
     items = session.query(Quote).filter_by(
         source_id=source_id).all()
@@ -204,14 +197,12 @@ def sourceQuoteJSON(source_id):
 
 @app.route('/source/<int:source_id>/quote/<int:quote_id>/JSON')
 def quoteJSON(source_id, quote_id):
-    """Show selected quote by selected Author (Source)"""
     quote = session.query(Quote).filter_by(id=quote_id).one()
     return jsonify(quote=quote.serialize)
 
 
 @app.route('/source/JSON')
 def sourcesJSON():
-    """Show Author (Source) List in JSON Format"""
     sources = session.query(Source).all()
     return jsonify(source=[r.serialize for r in sources])
 
@@ -228,17 +219,7 @@ def showSources():
         return render_template('sources.html', sources=sources)
 
 
-def checkInput(i, min=1, max=250):
-    """ Check for valid input length based on database restrictions"""
-
-    if min <= len(i) <= max:
-        return True
-    else:
-        return False
-
-
 # Create a new source
-# added validation of input.
 @app.route('/source/new/', methods=['GET', 'POST'])
 def newSource():
     """ Create a new source (author)"""
@@ -247,44 +228,34 @@ def newSource():
     if request.method == 'POST':
         newSource = Source(
             name=request.form['name'], user_id=login_session['user_id'])
-        if checkInput(newSource.name):
-            session.add(newSource)
-            flash('New Author %s Successfully Created' % newSource.name)
-            session.commit()
-            return redirect(url_for('showSources'))
-        else:
-            flash('Invalid input. Enter input less than 250 char.')
-            return redirect(url_for('showSources'))
+        session.add(newSource)
+        flash('New Author %s Successfully Created' % newSource.name)
+        session.commit()
+        return redirect(url_for('showSources'))
     else:
         return render_template('newSource.html')
 
 
 # Edit a source
-# added session.commit so edits are commited into the database.
-# added validation of input
 @app.route('/source/<int:source_id>/edit/', methods=['GET', 'POST'])
 def editSource(source_id):
     """ Edit the source (author)"""
-    originalSource = session.query(
+    editedSource = session.query(
         Source).filter_by(id=source_id).one()
     if 'username' not in login_session:
         return redirect('/login')
-    if originalSource.user_id != login_session['user_id']:
+    if editedSource.user_id != login_session['user_id']:
         return """<script>function myFunction() {alert(
         'You are not authorized to edit this author. Please create your own
         author in order to edit.');}</script><body onload='myFunction()'>"""
     if request.method == 'POST':
-        if checkInput(request.form['name']):
-            originalSource.name = request.form['name']
-            flash('Author successfully edited %s' % editedSource)
-            session.commit()
-            return redirect(url_for('showSources'))
-        else:
-            flash('Invalid input or input more than 250 char.')
+        if request.form['name']:
+            editedSource.name = request.form['name']
+            flash('Author successfully edited %s' % editedSource.name)
             return redirect(url_for('showSources'))
     else:
         return render_template('editSource.html', source_id=source_id,
-                               source=originalSource)
+                               source=editedSource)
 
 
 # Delete a source
@@ -354,14 +325,10 @@ def newQuote(source_id):
     if request.method == 'POST':
         newItem = Quote(description=request.form[
                  'description'], source_id=source_id, user_id=user)
-        if checkInput(newItem.description):
-            session.add(newItem)
-            session.commit()
-            flash('New quote successfully added')
-            return redirect(url_for('showQuote', source_id=source_id))
-        else:
-            flash('Invalid input or input more than 250 char.')
-            return redirect(url_for('showQuote', source_id=source_id))
+        session.add(newItem)
+        session.commit()
+        flash('New quote successfully added')
+        return redirect(url_for('showQuote', source_id=source_id))
     else:
         return render_template('newQuote.html', source_id=source_id,
                                source=source)
@@ -374,25 +341,23 @@ def editQuote(source_id, quote_id):
     """Edit an existing quote from a source (author)"""
     if 'username' not in login_session:
         return redirect('/login')
-    originalQuote = session.query(Quote).filter_by(id=quote_id).one()
+    editedQuote = session.query(Quote).filter_by(id=quote_id).one()
     source = session.query(Source).filter_by(id=source_id).one()
     user = login_session['user_id']
-    if login_session['user_id'] != originalQuote.user_id:
+    if login_session['user_id'] != editedQuote.user_id:
         return """<script>function myFunction() {alert('You are not authorized
          to edit quotes for this author. Please input your own author in order
           to edit quotes.');}</script><body onload='myFunction()'>"""
     if request.method == 'POST':
-        if checkInput(request.form['description']):
-            originalQuote.description = request.form['description']
-            session.commit()
-            flash('Quote Successfully Edited')
-            return redirect(url_for('showQuote', source_id=source_id))
-        else:
-            flash('Invalid input or input more than 250 char.')
-            return redirect(url_for('showQuote', source_id=source_id))
+        if request.form['description']:
+            editedQuote.description = request.form['description']
+        session.add(editedQuote)
+        session.commit()
+        flash('Quote Successfully Edited')
+        return redirect(url_for('showQuote', source_id=source_id))
     else:
         return render_template('editQuote.html', source_id=source_id,
-                               quote_id=quote_id, item=originalQuote)
+                               quote_id=quote_id, item=editedQuote)
 
 
 # Delete a quote
